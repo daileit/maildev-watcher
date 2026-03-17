@@ -1,0 +1,9 @@
+requests>=2.32.3
+fastapi>=0.115.12
+nicegui>=2.0.5
+uvicorn>=0.34.0
+httpx>=0.28.1
+python-json-logger>=3.3.0
+redis>=4.5.0
+mysql-connector-python>=8.4.0
+openai>=1.0.0
