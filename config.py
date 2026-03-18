@@ -37,6 +37,7 @@ class Config:
         self._configs['APP_PORT'] = os.getenv('APP_PORT', '8080')
         self._configs['APP_CRAWLER_DELAY'] = os.getenv('APP_CRAWLER_DELAY', '30')
         self._configs['APP_MODEL_DELAY'] = os.getenv('APP_MODEL_DELAY', '120')
+        self._configs['MAILDEV_ENDPOINT'] = os.getenv('MAILDEV_ENDPOINT', 'http://localhost:1080')
 
         # OpenAI configs
         self._configs['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', '')
