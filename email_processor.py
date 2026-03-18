@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Tuple
 
@@ -19,12 +19,20 @@ class EmailProcessor:
     """MailDev email producer/consumer implementation."""
 
     def __init__(self, queue_name: str = "mw_incoming_emails"):
-        self.maildev_endpoint = app_config.get("MAILDEV_ENDPOINT")
+        self.maildev_endpoint = self._normalize_maildev_endpoint(
+            app_config.get("MAILDEV_ENDPOINT", "http://localhost:1080")
+        )
         self.maildev_timeout = float(app_config.get("MAILDEV_TIMEOUT", "10"))
         self.queue_name = queue_name
 
         self.redis = RedisClient()
         self.db = DatabaseClient()
+
+    def _normalize_maildev_endpoint(self, endpoint: Any) -> str:
+        value = str(endpoint or "http://localhost:1080").strip()
+        if not value.startswith(("http://", "https://")):
+            value = f"http://{value}"
+        return value.rstrip("/")
 
     async def fetch_maildev_email_list(self) -> List[Dict[str, Any]]:
         url = f"{self.maildev_endpoint}/email"
@@ -80,6 +88,18 @@ class EmailProcessor:
             logger.warning(f"Failed to fetch email detail from {url}: {exc}")
         return {}
 
+    async def _delete_maildev_email(self, mailid: str) -> bool:
+        url = f"{self.maildev_endpoint}/email/{mailid}"
+        try:
+            async with httpx.AsyncClient(timeout=self.maildev_timeout) as client:
+                response = await client.delete(url)
+                response.raise_for_status()
+            logger.info(f"Deleted email {mailid} from MailDev")
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to delete email {mailid} from {url}: {exc}")
+            return False
+
     def _extract_mailid(self, email: Dict[str, Any]) -> str:
         headers = email.get("headers") if isinstance(email.get("headers"), dict) else {}
         return str(
@@ -122,21 +142,27 @@ class EmailProcessor:
                 continue
 
             if isinstance(candidate, (int, float)):
-                return datetime.fromtimestamp(candidate, tz=timezone.utc)
+                return datetime.fromtimestamp(candidate)
 
             if isinstance(candidate, str):
                 try:
                     cleaned = candidate.replace("Z", "+00:00")
-                    return datetime.fromisoformat(cleaned)
+                    parsed = datetime.fromisoformat(cleaned)
+                    if parsed.tzinfo is None:
+                        return parsed
+                    return parsed.astimezone().replace(tzinfo=None)
                 except ValueError:
                     pass
 
                 try:
-                    return parsedate_to_datetime(candidate)
+                    parsed = parsedate_to_datetime(candidate)
+                    if parsed.tzinfo is None:
+                        return parsed
+                    return parsed.astimezone().replace(tzinfo=None)
                 except (TypeError, ValueError):
                     pass
 
-        return datetime.now(tz=timezone.utc)
+        return datetime.now()
 
     def _build_raw_content(self, email: Dict[str, Any], detail: Dict[str, Any]) -> Tuple[str, str]:
         merged_email = dict(email)
@@ -171,18 +197,23 @@ class EmailProcessor:
 
         return raw_header, raw_body
 
+    def _find_existing_email_id(self, mailid: str, email_time: datetime) -> Any:
+        return self.db.fetch_value(
+            "SELECT `id` FROM `mw_metadata` WHERE `mailid` = %s AND `timestamp` = %s LIMIT 1",
+            (mailid, email_time),
+        )
+
     async def _store_email(self, email: Dict[str, Any]) -> None:
         mailid = self._extract_mailid(email)
         if not mailid:
             logger.warning("Queue item skipped: missing mail id")
             return
 
-        exists = self.db.fetch_value(
-            "SELECT `id` FROM `mw_metadata` WHERE `mailid` = %s LIMIT 1",
-            (mailid,),
-        )
+        email_time = self._parse_timestamp(email)
+        exists = self._find_existing_email_id(mailid, email_time)
         if exists:
-            logger.debug(f"Email {mailid} already stored, skipping")
+            logger.debug(f"Email {mailid} at {email_time} already stored, skipping")
+            await self._delete_maildev_email(mailid)
             return
 
         sender = self._format_people(email.get("from"))
@@ -196,26 +227,26 @@ class EmailProcessor:
             elif envelope_to:
                 receiver = str(envelope_to)
 
-        email_time = self._parse_timestamp(email).replace(tzinfo=None)
         subject = str(email.get("subject") or "")
-
-        self.db.execute_update(
-            """
-            INSERT INTO `mw_metadata` (`mailid`, `from`, `to`, `timestamp`, `subject`, `extracted_code`, `extracted_content`)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (mailid, sender, receiver, email_time, subject, None, None),
-        )
 
         mail_detail = await self._fetch_mail_detail(mailid)
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
 
-        self.db.execute_update(
-            """
-            INSERT INTO `mw_raw_content` (`mailid`, `raw_header`, `raw_body`)
-            VALUES (%s, %s, %s)
-            """,
-            (mailid, raw_header, raw_body),
-        )
+        with self.db.transaction() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO `mw_metadata` (`mailid`, `from`, `to`, `timestamp`, `subject`, `extracted_code`, `extracted_content`)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (mailid, sender, receiver, email_time, subject, None, None),
+            )
+            cursor.execute(
+                """
+                INSERT INTO `mw_raw_content` (`mailid`, `raw_header`, `raw_body`)
+                VALUES (%s, %s, %s)
+                """,
+                (mailid, raw_header, raw_body),
+            )
 
         logger.info(f"Stored email {mailid} metadata + raw content")
+        await self._delete_maildev_email(mailid)

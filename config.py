@@ -35,6 +35,7 @@ class Config:
         self._configs['APP_INIT_SECRET'] = os.getenv('APP_INIT_SECRET', uuid4().hex)
         self._configs['APP_LOG_LEVEL'] = os.getenv('APP_LOG_LEVEL', 'INFO')
         self._configs['APP_PORT'] = os.getenv('APP_PORT', '8080')
+        self._configs['APP_TIMEZONE'] = os.getenv('APP_TIMEZONE', 'Asia/Ho_Chi_Minh')
         self._configs['APP_CRAWLER_DELAY'] = os.getenv('APP_CRAWLER_DELAY', '30')
         self._configs['APP_QUEUE_WORKER_DELAY'] = os.getenv('APP_QUEUE_WORKER_DELAY', '1')
         self._configs['APP_MODEL_DELAY'] = os.getenv('APP_MODEL_DELAY', '120')

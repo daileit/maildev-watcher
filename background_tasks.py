@@ -15,7 +15,7 @@ class BackgroundTaskRunner:
 
     def __init__(self):
         self.crawler_delay = int(app_config.get("APP_CRAWLER_DELAY", "30"))
-        self.worker_delay = float(app_config.get("APP_QUEUE_WORKER_DELAY", "1"))
+        self.worker_delay = float(app_config.get("APP_QUEUE_WORKER_DELAY", "5"))
 
         self.processor = EmailProcessor(queue_name="mw_incoming_emails")
 
