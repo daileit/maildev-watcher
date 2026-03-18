@@ -9,6 +9,7 @@ import config as env_config
 import jsonlog
 from database import DatabaseClient
 from redis_cache import RedisClient
+from email_ai import EmailAI
 from telegram import TelegramNotifier
 
 logger = jsonlog.setup_logger("email_processor")
@@ -28,6 +29,7 @@ class EmailProcessor:
         self.redis = RedisClient()
         self.db = DatabaseClient()
         self.telegram = TelegramNotifier()
+        self.email_ai = EmailAI()
 
     def _normalize_maildev_endpoint(self, endpoint: Any) -> str:
         logger.debug(f"Normalizing MailDev endpoint: {endpoint}")
@@ -245,6 +247,8 @@ class EmailProcessor:
         mail_detail = await self._fetch_mail_detail(mailid)
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
         extracted_content = str(email.get("text") or mail_detail.get("text") or "")
+        ai_content = extracted_content or str(email.get("html") or mail_detail.get("html") or "")
+        extracted_code = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
 
         with self.db.transaction() as cursor:
             cursor.execute(
@@ -252,7 +256,7 @@ class EmailProcessor:
                 INSERT INTO `mw_metadata` (`mailid`, `from`, `to`, `timestamp`, `subject`, `extracted_code`, `extracted_content`)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (mailid, sender, receiver, email_time, subject, None, extracted_content),
+                (mailid, sender, receiver, email_time, subject, extracted_code, extracted_content),
             )
             cursor.execute(
                 """
@@ -265,5 +269,6 @@ class EmailProcessor:
         logger.info(f"Stored email {mailid} from {sender} to {receiver}: '{subject}'")
         await self._delete_maildev_email(mailid)
         if self.telegram.is_enabled():
-            message = self.telegram.build_new_email_message(subject, sender, receiver, extracted_content.replace("\n", ""))
+            notify_content = extracted_code or extracted_content.replace("\n", "")
+            message = self.telegram.build_new_email_message(subject, sender, receiver, notify_content)
             await self.telegram.send_message(message)
