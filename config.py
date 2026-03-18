@@ -36,17 +36,22 @@ class Config:
         self._configs['APP_LOG_LEVEL'] = os.getenv('APP_LOG_LEVEL', 'INFO')
         self._configs['APP_PORT'] = os.getenv('APP_PORT', '8080')
         self._configs['APP_TIMEZONE'] = os.getenv('APP_TIMEZONE', 'Asia/Ho_Chi_Minh')
-        self._configs['APP_CRAWLER_DELAY'] = os.getenv('APP_CRAWLER_DELAY', '30')
+        self._configs['APP_CRAWLER_DELAY'] = os.getenv('APP_CRAWLER_DELAY', '10')
         self._configs['APP_QUEUE_WORKER_DELAY'] = os.getenv('APP_QUEUE_WORKER_DELAY', '5')
         self._configs['APP_MODEL_DELAY'] = os.getenv('APP_MODEL_DELAY', '120')
         self._configs['APP_MAILDEV_ENDPOINT'] = os.getenv('APP_MAILDEV_ENDPOINT',  os.getenv('MAILDEV_ENDPOINT', 'http://localhost:1080'))
         self._configs['APP_MAILDEV_TIMEOUT'] = os.getenv('APP_MAILDEV_TIMEOUT',  os.getenv('MAILDEV_TIMEOUT', '10'))
+        self._configs['APP_MAILDEV_RECEIVER_FILTER'] = os.getenv('APP_MAILDEV_RECEIVER_FILTER', '')
 
         # OpenAI configs
         self._configs['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', '')
         self._configs['OPENAI_BASE_URL'] = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
         self._configs['OPENAI_MODEL'] = os.getenv('OPENAI_MODEL', 'gpt-4o')
         self._configs['OPENAI_LANGUAGE'] = os.getenv('OPENAI_LANGUAGE', 'Vietnamese')
+
+        #Telegram Bot configs
+        self._configs['TELEGRAM_BOT_TOKEN'] = os.getenv('TELEGRAM_BOT_TOKEN', '')
+        self._configs['TELEGRAM_CHAT_IDS'] = os.getenv('TELEGRAM_CHAT_IDS', '')
 
     def _load_env_variables(self):
         """Load all environment variables into the config (override predefined if set)."""

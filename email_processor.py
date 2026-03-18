@@ -9,6 +9,7 @@ import config as env_config
 import jsonlog
 from database import DatabaseClient
 from redis_cache import RedisClient
+from telegram import TelegramNotifier
 
 logger = jsonlog.setup_logger("email_processor")
 
@@ -21,10 +22,12 @@ class EmailProcessor:
     def __init__(self, queue_name: str = "mw_incoming_emails"):
         self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
         self.maildev_timeout = float(app_config.get("APP_MAILDEV_TIMEOUT"))
+        self.maildev_receiver_filter = str(app_config.get("APP_MAILDEV_RECEIVER_FILTER") or "").strip().lower()
         self.queue_name = queue_name
 
         self.redis = RedisClient()
         self.db = DatabaseClient()
+        self.telegram = TelegramNotifier()
 
     def _normalize_maildev_endpoint(self, endpoint: Any) -> str:
         logger.debug(f"Normalizing MailDev endpoint: {endpoint}")
@@ -178,9 +181,9 @@ class EmailProcessor:
                 raw_header = str(headers)
 
         body_candidates = [
-            merged_email.get("envelope"),
             merged_email.get("html"),
-            merged_email.get("text")
+            merged_email.get("text"),            
+            merged_email.get("envelope")
         ]
         for item in body_candidates:
             if item:
@@ -201,17 +204,15 @@ class EmailProcessor:
             (mailid, email_time),
         )
 
+    def _should_drop_by_receiver_filter(self, receiver: str) -> bool:
+        if not self.maildev_receiver_filter:
+            return False
+        return self.maildev_receiver_filter not in receiver.lower()
+
     async def _store_email(self, email: Dict[str, Any]) -> None:
         mailid = self._extract_mailid(email)
         if not mailid:
             logger.warning("Queue item skipped: missing mail id")
-            return
-
-        email_time = self._parse_timestamp(email)
-        exists = self._find_existing_email_id(mailid, email_time)
-        if exists:
-            logger.debug(f"Email {mailid} at {email_time} already stored, skipping")
-            await self._delete_maildev_email(mailid)
             return
 
         sender = self._format_people(email.get("from"))
@@ -224,6 +225,20 @@ class EmailProcessor:
                 receiver = ", ".join(str(v) for v in envelope_to if v)
             elif envelope_to:
                 receiver = str(envelope_to)
+
+        if self._should_drop_by_receiver_filter(receiver):
+            logger.info(
+                f"Dropped email {mailid}: receiver '{receiver}' does not contain filter '{self.maildev_receiver_filter}'"
+            )
+            await self._delete_maildev_email(mailid)
+            return
+
+        email_time = self._parse_timestamp(email)
+        exists = self._find_existing_email_id(mailid, email_time)
+        if exists:
+            logger.debug(f"Email {mailid} at {email_time} already stored, skipping")
+            await self._delete_maildev_email(mailid)
+            return
 
         subject = str(email.get("subject") or "")
 
@@ -249,3 +264,6 @@ class EmailProcessor:
 
         logger.info(f"Stored email {mailid} metadata + raw content")
         await self._delete_maildev_email(mailid)
+        if self.telegram.is_enabled():
+            message = self.telegram.build_new_email_message(subject, sender, receiver, extracted_content)
+            await self.telegram.send_message(message)
