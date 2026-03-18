@@ -19,14 +19,15 @@ class EmailProcessor:
     """MailDev email producer/consumer implementation."""
 
     def __init__(self, queue_name: str = "mw_incoming_emails"):
-        self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("MAILDEV_ENDPOINT"))
-        self.maildev_timeout = float(app_config.get("MAILDEV_TIMEOUT", "10"))
+        self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
+        self.maildev_timeout = float(app_config.get("APP_MAILDEV_TIMEOUT"))
         self.queue_name = queue_name
 
         self.redis = RedisClient()
         self.db = DatabaseClient()
 
     def _normalize_maildev_endpoint(self, endpoint: Any) -> str:
+        logger.debug(f"Normalizing MailDev endpoint: {endpoint}")
         value = str(endpoint).strip()
         if not value.startswith(("http://", "https://")):
             value = f"http://{value}"
@@ -177,10 +178,9 @@ class EmailProcessor:
                 raw_header = str(headers)
 
         body_candidates = [
-            merged_email.get("text"),
+            merged_email.get("envelope"),
             merged_email.get("html"),
-            merged_email.get("content"),
-            merged_email.get("raw"),
+            merged_email.get("text")
         ]
         for item in body_candidates:
             if item:
@@ -229,6 +229,7 @@ class EmailProcessor:
 
         mail_detail = await self._fetch_mail_detail(mailid)
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
+        extracted_content = str(email.get("text") or mail_detail.get("text") or "")
 
         with self.db.transaction() as cursor:
             cursor.execute(
@@ -236,7 +237,7 @@ class EmailProcessor:
                 INSERT INTO `mw_metadata` (`mailid`, `from`, `to`, `timestamp`, `subject`, `extracted_code`, `extracted_content`)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (mailid, sender, receiver, email_time, subject, None, None),
+                (mailid, sender, receiver, email_time, subject, None, extracted_content),
             )
             cursor.execute(
                 """
