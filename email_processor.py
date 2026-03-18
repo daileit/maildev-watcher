@@ -265,5 +265,5 @@ class EmailProcessor:
         logger.info(f"Stored email {mailid} from {sender} to {receiver}: '{subject}'")
         await self._delete_maildev_email(mailid)
         if self.telegram.is_enabled():
-            message = self.telegram.build_new_email_message(subject, sender, receiver, extracted_content.replace("\n", ". "))
+            message = self.telegram.build_new_email_message(subject, sender, receiver, extracted_content.replace("\n", ""))
             await self.telegram.send_message(message)

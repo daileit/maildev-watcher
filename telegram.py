@@ -24,11 +24,11 @@ class TelegramNotifier:
 
     def build_new_email_message(self, subject: str, sender: str, receiver: str, content: str) -> str:
         message_lines = [
-            "⛑ New email received! 📨",
-            f"Subject: {subject or '-'}",
+            "⛑ 📨 New email received! ",
+            f"*Subject: {subject or '-'}*",
             f"From: {sender or '-'}",
             f"To: {receiver or '-'}",
-            f"Content: ||{content or '-'}||",
+            f"Content: {content or '-'}",
         ]
         return "\n".join(message_lines)
 
