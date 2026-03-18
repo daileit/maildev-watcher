@@ -139,7 +139,11 @@ class EmailAI:
                     max_tokens=100,
                     temperature=0.3,
                 )
-                return (response.choices[0].message.content or "").strip()
+                if response.choices and response.choices[0].message and response.choices[0].message.content:
+                    return (response.choices[0].message.content).strip()
+                else:
+                    logger.warning(f"OpenAI API response missing content with model {selected_model}: {response}")
+                    return ""
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 ignore_model = selected_model
