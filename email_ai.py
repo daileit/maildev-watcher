@@ -137,7 +137,8 @@ class EmailAI:
                         {"role": "user", "content": content},
                     ],
                     max_tokens=1024,
-                    temperature=0.3
+                    temperature=0.3,
+                    reasoning_format="none",
                 )
                 if response.choices and response.choices[0].message.content:
                     return (response.choices[0].message.content).strip()
