@@ -18,7 +18,7 @@ class EmailAI:
     """Lightweight AI helper for email content summarization."""
 
     _FAILED_MODEL_TTL_SECONDS = 3600
-    _MAX_AI_ATTEMPTS = 3
+    _MAX_AI_ATTEMPTS = 5
     _MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\)]+\)", re.IGNORECASE)
     _HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
     _IMAGE_URL_RE = re.compile(r"https?://\S+\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?\S*)?", re.IGNORECASE)
@@ -139,11 +139,12 @@ class EmailAI:
                     max_tokens=1024,
                     temperature=0.3
                 )
-                if response.choices and response.choices[0].message:
-                    return (response.choices[0].message).strip()
+                if response.choices and response.choices[0].message.content:
+                    return (response.choices[0].message.content).strip()
                 else:
                     logger.warning(f"OpenAI API response missing content with model {selected_model}: {response}")
-                    return ""
+                    last_exc = Exception(f"Empty response content from model {selected_model}")
+                    ignore_model = selected_model
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 ignore_model = selected_model
