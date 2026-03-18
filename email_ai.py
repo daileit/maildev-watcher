@@ -131,13 +131,14 @@ class EmailAI:
                             "content": (
                                 f"You are an email assistant. Summarize the email content in one super short sentence "
                                 f"that captures the very main information only. Reply in {self.language}. "
-                                f"Output only the summary sentence, nothing else."
+                                f"Output only the summary sentence, nothing else, no reasoning."
                             ),
                         },
                         {"role": "user", "content": content},
                     ],
-                    max_tokens=100,
+                    max_tokens=2048,
                     temperature=0.3,
+                    response_format={"type": "json_object"}
                 )
                 if response.choices and response.choices[0].message and response.choices[0].message.content:
                     return (response.choices[0].message.content).strip()
