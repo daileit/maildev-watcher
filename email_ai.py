@@ -128,8 +128,8 @@ class EmailAI:
                         {
                             "role": "system",
                             "content": (
-                                f"You are an email assistant. Summarize the email content in one short sentence "
-                                f"that captures the main information. Reply in {self.language}. "
+                                f"You are an email assistant. Summarize the email content in one super short sentence "
+                                f"that captures the very main information only. Reply in {self.language}. "
                                 f"Output only the summary sentence, nothing else."
                             ),
                         },
