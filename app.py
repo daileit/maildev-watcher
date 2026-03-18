@@ -6,6 +6,7 @@ import jsonlog
 import uvicorn
 import config as env_config
 import init as app_init
+import background_tasks
 
 
 app_config = env_config.Config(group="APP")
@@ -16,7 +17,11 @@ logger = jsonlog.setup_logger("app")
 async def lifespan(application: FastAPI):
     """Run startup checks and schema migrations before accepting requests."""
     app_init.initialize()
-    yield
+    await background_tasks.start_background_tasks()
+    try:
+        yield
+    finally:
+        await background_tasks.stop_background_tasks()
 
 
 app = FastAPI(lifespan=lifespan)
