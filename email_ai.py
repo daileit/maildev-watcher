@@ -122,6 +122,7 @@ class EmailAI:
         for _ in range(self._MAX_AI_ATTEMPTS):
             selected_model = self._get_model(ignore_model=ignore_model)
             try:
+                logger.info(f"Calling OpenAI API with model {selected_model}")
                 response = self.client.chat.completions.create(
                     model=selected_model,
                     messages=[
