@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 import httpx
@@ -12,6 +13,9 @@ telegram_config = env_config.Config()
 
 class TelegramNotifier:
     """Send Telegram notifications for processed emails."""
+
+    _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F]")
+    _MARKDOWN_SPECIAL_RE = re.compile(r"([_\*\[\]\(\)~`>#+\-=\|\{\}\.\!])")
 
     def __init__(self):
         self.bot_token = str(telegram_config.get("TELEGRAM_BOT_TOKEN") or "").strip()
@@ -32,6 +36,13 @@ class TelegramNotifier:
         ]
         return "\n".join(message_lines)
 
+    def _sanitize_message(self, message: str) -> str:
+        sanitized = self._CONTROL_CHAR_RE.sub(" ", message)
+        sanitized = self._MARKDOWN_SPECIAL_RE.sub(r"\\\1", sanitized)
+        sanitized = re.sub(r"\s{2,}", " ", sanitized)
+        sanitized = re.sub(r"\n{3,}", "\n\n", sanitized)
+        return sanitized.strip()
+
     async def send_message(self, message: str) -> None:
         if not self.is_enabled():
             logger.debug("Telegram notifier disabled: missing bot token or chat ids")
@@ -49,5 +60,28 @@ class TelegramNotifier:
                         },
                     )
                     response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 400:
+                        logger.warning(f"Failed to send Telegram message to chat {chat_id}: {exc}")
+                        continue
+
+                    sanitized_message = self._sanitize_message(message)
+                    if not sanitized_message or sanitized_message == message:
+                        logger.warning(f"Failed to send Telegram message to chat {chat_id}: {exc}")
+                        continue
+
+                    try:
+                        retry_response = await client.post(
+                            url,
+                            json={
+                                "chat_id": chat_id,
+                                "text": sanitized_message,
+                            },
+                        )
+                        retry_response.raise_for_status()
+                    except Exception as retry_exc:  # noqa: BLE001
+                        logger.warning(
+                            f"Failed to send sanitized Telegram message to chat {chat_id}: {retry_exc}"
+                        )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(f"Failed to send Telegram message to chat {chat_id}: {exc}")
