@@ -46,7 +46,7 @@ class Config:
         # OpenAI configs
         self._configs['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', '')
         self._configs['OPENAI_BASE_URL'] = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
-        self._configs['OPENAI_MODEL'] = os.getenv('OPENAI_MODEL', 'gpt-4o')
+        self._configs['OPENAI_MODELS'] = os.getenv('OPENAI_MODELS', 'gpt-4o')
         self._configs['OPENAI_LANGUAGE'] = os.getenv('OPENAI_LANGUAGE', 'Vietnamese')
 
         #Telegram Bot configs
