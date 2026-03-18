@@ -262,8 +262,8 @@ class EmailProcessor:
                 (mailid, raw_header, raw_body),
             )
 
-        logger.info(f"Stored email {mailid} metadata + raw content")
+        logger.info(f"Stored email {mailid} from {sender} to {receiver}: '{subject}'")
         await self._delete_maildev_email(mailid)
         if self.telegram.is_enabled():
-            message = self.telegram.build_new_email_message(subject, sender, receiver, extracted_content)
+            message = self.telegram.build_new_email_message(subject, sender, receiver, extracted_content.replace("\n", ". "))
             await self.telegram.send_message(message)
