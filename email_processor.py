@@ -19,9 +19,7 @@ class EmailProcessor:
     """MailDev email producer/consumer implementation."""
 
     def __init__(self, queue_name: str = "mw_incoming_emails"):
-        self.maildev_endpoint = self._normalize_maildev_endpoint(
-            app_config.get("MAILDEV_ENDPOINT", "http://localhost:1080")
-        )
+        self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("MAILDEV_ENDPOINT"))
         self.maildev_timeout = float(app_config.get("MAILDEV_TIMEOUT", "10"))
         self.queue_name = queue_name
 
@@ -29,7 +27,7 @@ class EmailProcessor:
         self.db = DatabaseClient()
 
     def _normalize_maildev_endpoint(self, endpoint: Any) -> str:
-        value = str(endpoint or "http://localhost:1080").strip()
+        value = str(endpoint).strip()
         if not value.startswith(("http://", "https://")):
             value = f"http://{value}"
         return value.rstrip("/")
