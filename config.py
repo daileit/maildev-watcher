@@ -43,6 +43,7 @@ class Config:
         self._configs['APP_MAILDEV_TIMEOUT'] = os.getenv('APP_MAILDEV_TIMEOUT',  os.getenv('MAILDEV_TIMEOUT', '10'))
         self._configs['APP_MAILDEV_RECEIVER_WHITELIST'] = os.getenv('APP_MAILDEV_RECEIVER_WHITELIST', '')
         self._configs['APP_MAILDEV_SENDER_BLACKLIST'] = os.getenv('APP_MAILDEV_SENDER_BLACKLIST', '')
+        self._configs['APP_CONSOLE_URL'] = os.getenv('APP_CONSOLE_URL', '')
 
         # OpenAI configs
         self._configs['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', '')

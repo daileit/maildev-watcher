@@ -19,6 +19,7 @@ class TelegramNotifier:
     def __init__(self):
         self.bot_token = str(telegram_config.get("TELEGRAM_BOT_TOKEN") or "").strip()
         raw_chat_ids = str(telegram_config.get("TELEGRAM_CHAT_IDS") or "")
+        self.console_url = str(telegram_config.get("APP_CONSOLE_URL") or "").strip()
         self.chat_ids = [item.strip() for item in raw_chat_ids.split(",") if item.strip()]
         self.timeout = float(telegram_config.get("APP_MAILDEV_TIMEOUT") or 10)
         self.bot = TeleBot(self.bot_token) if self.bot_token else None
@@ -41,7 +42,7 @@ class TelegramNotifier:
         safe_content = self._escape_markdown_v2(content or "-")
 
         message_lines = [
-            f"⛑ 📨 *New email received\! ID: *`{safe_mailid}`",
+            f"⛑ 📨 *New email received\! ID: [{safe_mailid}]({self.console_url}?mailid={safe_mailid})",
             f"*Subject:* {safe_subject}",
             f"*From:* {safe_sender}",
             f"*To:* {safe_receiver}",
