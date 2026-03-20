@@ -40,11 +40,10 @@ class TelegramNotifier:
         safe_sender = self._escape_markdown_v2(sender or "-")
         safe_receiver = self._escape_markdown_v2(receiver or "-")
         safe_content = self._escape_markdown_v2(content or "-")
-        headline = f"⛑ 📨 *New email received!* [View in console: {safe_mailid}]({self.console_url}?mailid={mailid})"
-        safe_headline = self._escape_markdown_v2(headline)
+        safe_url = self._escape_markdown_v2(f"{self.console_url}?mailid={mailid}" or "-")
 
         message_lines = [
-            f"{safe_headline}",
+            f"⛑ 📨 New email received\! \{safe_mailid}\]\({self.console_url}\)",
             f"*Subject:* {safe_subject}",
             f"*From:* {safe_sender}",
             f"*To:* {safe_receiver}",
