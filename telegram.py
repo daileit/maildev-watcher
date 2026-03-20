@@ -43,11 +43,12 @@ class TelegramNotifier:
         safe_url = self._escape_markdown_v2(f"{self.console_url}?mailid={mailid}" or "-")
 
         message_lines = [
-            f"⛑ 📨 New email received\! \[View: {safe_mailid}\]\({safe_url}\)",
+            f"⛑ 📨 New email received\!",
             f"*Subject:* {safe_subject}",
             f"*From:* {safe_sender}",
             f"*To:* {safe_receiver}",
             f"*Content:* {safe_content.replace('"', '`')}",
+            f"\[View in console: {safe_mailid}\]\({safe_url}\)"
         ]
         return "\n".join(message_lines)
 
