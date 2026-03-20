@@ -139,8 +139,10 @@ class EmailAI:
                     "max_tokens": 1024,
                     "temperature": 0.3,
                 }
-                if "gpt" in selected_model.lower() or "qwen" in selected_model.lower():
+                if "gpt" in selected_model.lower():
                     create_kwargs["reasoning_format"] = "hidden"
+                if "qwen" in selected_model.lower():
+                    create_kwargs["reasoning_effort"] = "none"
                 
                 response = self.client.chat.completions.create(**create_kwargs)
                 if response.choices and response.choices[0].message.content:
