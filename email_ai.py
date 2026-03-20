@@ -109,8 +109,8 @@ class EmailAI:
         cleaned = self._NEWLINE_RE.sub("\n\n", cleaned).strip()
 
         words = cleaned.split()
-        if len(words) > 4000:
-            cleaned = " ".join(words[:4000])
+        if len(words) > 3000:
+            cleaned = " ".join(words[:3000])
 
         return cleaned
 
@@ -143,7 +143,7 @@ class EmailAI:
                     "temperature": 0.3,
                 }
                 if "gpt" in selected_model.lower():
-                    create_kwargs["include_reasoning"] = False
+                    create_kwargs["reasoning_format"] = "hidden"
                 elif "qwen" in selected_model.lower():
                     create_kwargs["reasoning_effort"] = "none"
                 
