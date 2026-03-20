@@ -41,7 +41,7 @@ class TelegramNotifier:
         safe_content = self._escape_markdown_v2(content or "-")
 
         message_lines = [
-            f"⛑ 📨 *New email received\!* ID:`{safe_mailid}`",
+            f"⛑ 📨 *New email received\! ID: *`{safe_mailid}`",
             f"*Subject:* {safe_subject}",
             f"*From:* {safe_sender}",
             f"*To:* {safe_receiver}",

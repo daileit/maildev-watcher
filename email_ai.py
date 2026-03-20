@@ -133,7 +133,7 @@ class EmailAI:
                             "content": (
                                 f"You are an email assistant. Summarize the email content in one super short sentence "
                                 f"that captures the very main information only. Reply in {self.language}. "
-                                f"If there is a login code or OTP in the content, use ```code``` format to quote the code. "
+                                f"If there is a login code or OTP in the content, use `` (backticks) to quote the code. "
                                 f"Output only the summary sentence, nothing else, no reasoning."
                             ),
                         },
