@@ -140,8 +140,8 @@ class EmailAI:
                     "temperature": 0.3,
                 }
                 if "gpt" in selected_model.lower():
-                    create_kwargs["reasoning_format"] = "hidden"
-                if "qwen" in selected_model.lower():
+                    create_kwargs["include_reasoning"] = False
+                elif "qwen" in selected_model.lower():
                     create_kwargs["reasoning_effort"] = "none"
                 
                 response = self.client.chat.completions.create(**create_kwargs)
