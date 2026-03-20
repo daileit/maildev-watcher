@@ -45,7 +45,7 @@ class TelegramNotifier:
             f"*Subject:* {safe_subject}",
             f"*From:* {safe_sender}",
             f"*To:* {safe_receiver}",
-            f"*Content:* {safe_content}",
+            f"*Content:* {safe_content.replace('"', '`')}",
         ]
         return "\n".join(message_lines)
 
