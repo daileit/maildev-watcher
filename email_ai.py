@@ -22,6 +22,7 @@ class EmailAI:
     _MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\)]+\)", re.IGNORECASE)
     _HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
     _IMAGE_URL_RE = re.compile(r"https?://\S+\.(?:png|jpe?g|gif|webp|svg|bmp)(?:\?\S*)?", re.IGNORECASE)
+    _LONG_WORD_RE = re.compile(r"\S{65,}")
     _SPACE_RE = re.compile(r"[ \t]{2,}")
     _NEWLINE_RE = re.compile(r"\n{3,}")
 
@@ -101,14 +102,15 @@ class EmailAI:
         cleaned = self._HTML_IMAGE_RE.sub(" ", cleaned)
         cleaned = self._IMAGE_URL_RE.sub(" ", cleaned)
         cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = self._LONG_WORD_RE.sub(lambda m: m.group(0)[:64], cleaned)
 
         lines = [self._SPACE_RE.sub(" ", line).strip() for line in cleaned.split("\n")]
         cleaned = "\n".join(lines)
         cleaned = self._NEWLINE_RE.sub("\n\n", cleaned).strip()
 
         words = cleaned.split()
-        if len(words) > 3900:
-            cleaned = " ".join(words[:3900])
+        if len(words) > 4000:
+            cleaned = " ".join(words[:4000])
 
         return cleaned
 
