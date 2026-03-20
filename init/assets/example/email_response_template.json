@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "data": {
+    "id": "integer (mw_metadata.id)",
+    "mailid": "string (unique identifier from MailDev)",
+    "from": "string (sender email address)",
+    "to": "string (recipient email addresses, comma-separated)",
+    "timestamp": "string (ISO 8601 datetime)",
+    "subject": "string (email subject line)",
+    "extracted_code": "string (code extracted from email, if any)",
+    "raw": {
+      "headers": "object/string (JSON parsed email headers)",
+      "body": "string (raw email body text)"
+    }
+  },
+  "error": null
+}
