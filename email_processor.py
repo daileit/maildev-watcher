@@ -23,7 +23,8 @@ class EmailProcessor:
     def __init__(self, queue_name: str = "mw_incoming_emails"):
         self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
         self.maildev_timeout = float(app_config.get("APP_MAILDEV_TIMEOUT"))
-        self.maildev_receiver_filter = str(app_config.get("APP_MAILDEV_RECEIVER_FILTER") or "").strip().lower()
+        self.maildev_receiver_whitelist = str(app_config.get("APP_MAILDEV_RECEIVER_WHITELIST") or "").strip().lower()
+        self.maildev_sender_blacklist = str(app_config.get("APP_MAILDEV_SENDER_BLACKLIST") or "").strip().lower()
         self.queue_name = queue_name
 
         self.redis = RedisClient()
@@ -206,10 +207,15 @@ class EmailProcessor:
             (mailid, email_time),
         )
 
-    def _should_drop_by_receiver_filter(self, receiver: str) -> bool:
-        if not self.maildev_receiver_filter:
+    def _should_drop_by_receiver_whitelist(self, receiver: str) -> bool:
+        if not self.maildev_receiver_whitelist:
             return False
-        return self.maildev_receiver_filter not in receiver.lower()
+        return self.maildev_receiver_whitelist not in receiver.lower()
+
+    def _should_drop_by_sender_blacklist(self, sender: str) -> bool:
+        if not self.maildev_sender_blacklist:
+            return False
+        return self.maildev_sender_blacklist in sender.lower()
 
     async def _store_email(self, email: Dict[str, Any]) -> None:
         mailid = self._extract_mailid(email)
@@ -228,9 +234,16 @@ class EmailProcessor:
             elif envelope_to:
                 receiver = str(envelope_to)
 
-        if self._should_drop_by_receiver_filter(receiver):
+        if self._should_drop_by_receiver_whitelist(receiver):
             logger.info(
-                f"Dropped email {mailid}: receiver '{receiver}' does not contain filter '{self.maildev_receiver_filter}'"
+                f"Dropped email {mailid}: receiver '{receiver}' not in whitelist '{self.maildev_receiver_whitelist}'"
+            )
+            await self._delete_maildev_email(mailid)
+            return
+
+        if self._should_drop_by_sender_blacklist(sender):
+            logger.info(
+                f"Dropped email {mailid}: sender '{sender}' matched blacklist '{self.maildev_sender_blacklist}'"
             )
             await self._delete_maildev_email(mailid)
             return

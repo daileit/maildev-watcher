@@ -41,7 +41,8 @@ class Config:
         self._configs['APP_MODEL_DELAY'] = os.getenv('APP_MODEL_DELAY', '120')
         self._configs['APP_MAILDEV_ENDPOINT'] = os.getenv('APP_MAILDEV_ENDPOINT',  os.getenv('MAILDEV_ENDPOINT', 'http://localhost:1080'))
         self._configs['APP_MAILDEV_TIMEOUT'] = os.getenv('APP_MAILDEV_TIMEOUT',  os.getenv('MAILDEV_TIMEOUT', '10'))
-        self._configs['APP_MAILDEV_RECEIVER_FILTER'] = os.getenv('APP_MAILDEV_RECEIVER_FILTER', '')
+        self._configs['APP_MAILDEV_RECEIVER_WHITELIST'] = os.getenv('APP_MAILDEV_RECEIVER_WHITELIST', '')
+        self._configs['APP_MAILDEV_SENDER_BLACKLIST'] = os.getenv('APP_MAILDEV_SENDER_BLACKLIST', '')
 
         # OpenAI configs
         self._configs['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY', '')
