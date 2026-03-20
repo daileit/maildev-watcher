@@ -1,5 +1,6 @@
 import re
 import asyncio
+from html import escape
 
 import config as env_config
 import jsonlog
@@ -29,25 +30,42 @@ class TelegramNotifier:
 
     def _escape_markdown_v2(self, text: str) -> str:
         escaped = self._CONTROL_CHAR_RE.sub(" ", text or "")
-        escaped = self._MARKDOWN_SPECIAL_RE.sub(r"\\\1", escaped)
         escaped = re.sub(r"\s{2,}", " ", escaped)
         escaped = re.sub(r"\n{3,}", "\n\n", escaped)
-        return escaped.strip()
+        return escape(escaped.strip(), quote=True)
+
+    def _format_content_with_inline_code(self, text: str) -> str:
+        normalized = self._CONTROL_CHAR_RE.sub(" ", text or "")
+        normalized = re.sub(r"\s{2,}", " ", normalized)
+        normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
+        if not normalized:
+            return "-"
+
+        parts = []
+        last = 0
+        for match in re.finditer(r'"([^"\n]+)"', normalized):
+            parts.append(escape(normalized[last:match.start()], quote=True))
+            quoted = escape(match.group(1), quote=True)
+            parts.append(f"<code>{quoted}</code>")
+            last = match.end()
+
+        parts.append(escape(normalized[last:], quote=True))
+        return "".join(parts).replace("\n", "<br>")
 
     def build_new_email_message(self, mailid: str, subject: str, sender: str, receiver: str, content: str) -> str:
         safe_mailid = self._escape_markdown_v2(mailid or "-")
         safe_subject = self._escape_markdown_v2(subject or "-")
         safe_sender = self._escape_markdown_v2(sender or "-")
         safe_receiver = self._escape_markdown_v2(receiver or "-")
-        safe_content = self._escape_markdown_v2(content or "-")
+        safe_content = self._format_content_with_inline_code(content or "-")
         safe_url = self._escape_markdown_v2(f"{self.console_url}?mailid={mailid}" or "-")
 
         message_lines = [
-            f"⛑ 📨 New email received\! \{safe_mailid}\]\({self.console_url}\)",
-            f"*Subject:* {safe_subject}",
-            f"*From:* {safe_sender}",
-            f"*To:* {safe_receiver}",
-            f"*Content:* {safe_content.replace('"', '`')}",
+            f"⛑ 📨 <b>New email received!</b> <a href=\"{safe_url}\">{safe_mailid}</a>",
+            f"<b>Subject:</b> {safe_subject}",
+            f"<b>From:</b> {safe_sender}",
+            f"<b>To:</b> {safe_receiver}",
+            f"<b>Content:</b> {safe_content}",
         ]
         return "\n".join(message_lines)
 
@@ -68,7 +86,7 @@ class TelegramNotifier:
                     self.bot.send_message,
                     chat_id,
                     message,
-                    parse_mode="MarkdownV2",
+                    parse_mode="HTML",
                     disable_web_page_preview=True,
                     timeout=self.timeout,
                 )
