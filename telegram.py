@@ -61,7 +61,7 @@ class TelegramNotifier:
         safe_url = self._escape_markdown_v2(f"{self.console_url}?mailid={mailid}" or "-")
 
         message_lines = [
-            f"⛑📨 <b>New email received!</b> <a href=\"{safe_url}\">Mail ID {safe_mailid}</a>",
+            f"⛑📨 <b>New email received!</b> <a href=\"{safe_url}\">Mail ID:{safe_mailid}</a>",
             f"<b>Subject:</b> {safe_subject}",
             f"<b>From:</b> {safe_sender}",
             f"<b>To:</b> {safe_receiver}",
