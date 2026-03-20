@@ -20,6 +20,8 @@ app_config = env_config.Config(group="APP")
 class EmailProcessor:
     """MailDev email producer/consumer implementation."""
 
+    _CACHE_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+
     def __init__(self, queue_name: str = "mw_incoming_emails"):
         self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
         self.maildev_timeout = float(app_config.get("APP_MAILDEV_TIMEOUT"))
@@ -285,3 +287,138 @@ class EmailProcessor:
             notify_content = extracted_code or extracted_content.replace("\n", "")
             message = self.telegram.build_new_email_message(mailid, subject, sender, receiver, notify_content)
             await self.telegram.send_message(message)
+
+    async def get_emails_list(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        mailid: str = None,
+        sender: str = None,
+        receiver: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Query emails list from database with minimal metadata.
+        Returns paginated results with basic email info.
+        """
+        where_clauses = ["1=1"]
+        params = []
+
+        if mailid:
+            where_clauses.append("`mailid` LIKE %s")
+            params.append(f"%{mailid}%")
+
+        if sender:
+            where_clauses.append("`from` LIKE %s")
+            params.append(f"%{sender}%")
+
+        if receiver:
+            where_clauses.append("`to` LIKE %s")
+            params.append(f"%{receiver}%")
+
+        where_sql = " AND ".join(where_clauses)
+
+        # Get total count
+        count_query = f"SELECT COUNT(*) as total FROM `mw_metadata` WHERE {where_sql}"
+        total = self.db.fetch_value(count_query, params) or 0
+
+        # Get paginated metadata (lightweight)
+        metadata_query = f"""
+            SELECT `id`, `mailid`, `from`, `to`, `timestamp`, `subject`
+            FROM `mw_metadata`
+            WHERE {where_sql}
+            ORDER BY `timestamp` DESC
+            LIMIT %s OFFSET %s
+        """
+        params_with_pagination = params + [limit, offset]
+        metadata_rows = self.db.execute_query(metadata_query, params_with_pagination)
+
+        # Build lightweight email list
+        emails = []
+        for row in metadata_rows:
+            email = {
+                "id": row.get("id"),
+                "mailid": row.get("mailid"),
+                "from": row.get("from") or "",
+                "to": row.get("to") or "",
+                "timestamp": row.get("timestamp").isoformat() if row.get("timestamp") else None,
+                "subject": row.get("subject") or "",
+            }
+            emails.append(email)
+
+        return {
+            "success": True,
+            "data": {
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "count": len(emails),
+                "emails": emails,
+            },
+            "error": None,
+        }
+
+    async def get_email_by_mailid(self, mailid: str) -> Dict[str, Any]:
+        """
+        Fetch a single email by mailid with full metadata and raw content.
+        Results are cached for 7 days in Redis.
+        """
+        # Try to get from cache
+        cache_key = f"mw_email:{mailid}"
+        cached_result = self.redis.get_json(cache_key)
+        if cached_result is not None:
+            logger.debug(f"Cache HIT for email {mailid}")
+            return cached_result
+
+        metadata = self.db.fetch_one(
+            """
+            SELECT `id`, `mailid`, `from`, `to`, `timestamp`, `subject`,
+                   `extracted_code`, `extracted_content`
+            FROM `mw_metadata`
+            WHERE `mailid` = %s
+            LIMIT 1
+            """,
+            (mailid,),
+        )
+
+        if not metadata:
+            result = {
+                "success": False,
+                "data": None,
+                "error": f"Email {mailid} not found",
+            }
+            return result
+
+        raw_content = self.db.fetch_one(
+            "SELECT `raw_header`, `raw_body` FROM `mw_raw_content` WHERE `mailid` = %s LIMIT 1",
+            (mailid,),
+        )
+
+        email = {
+            "id": metadata.get("id"),
+            "mailid": metadata.get("mailid"),
+            "from": metadata.get("from") or "",
+            "to": metadata.get("to") or "",
+            "timestamp": metadata.get("timestamp").isoformat() if metadata.get("timestamp") else None,
+            "subject": metadata.get("subject") or "",
+            "extracted_code": metadata.get("extracted_code") or "",
+            "extracted_content": metadata.get("extracted_content") or "",
+            "raw": {
+                "headers": raw_content.get("raw_header") if raw_content else "",
+                "body": raw_content.get("raw_body") if raw_content else "",
+            },
+        }
+
+        result = {
+            "success": True,
+            "data": email,
+            "error": None,
+        }
+
+        # Cache the result for 7 days
+        try:
+            self.redis.set_json(cache_key, result, ttl=self._CACHE_TTL_SECONDS)
+            logger.debug(f"Cached email {mailid} for {self._CACHE_TTL_SECONDS}s")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"Failed to cache email {mailid}: {exc}")
+
+        return result
