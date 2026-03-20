@@ -283,5 +283,5 @@ class EmailProcessor:
         await self._delete_maildev_email(mailid)
         if self.telegram.is_enabled():
             notify_content = extracted_code or extracted_content.replace("\n", "")
-            message = self.telegram.build_new_email_message(subject, sender, receiver, notify_content)
+            message = self.telegram.build_new_email_message(mailid, subject, sender, receiver, notify_content)
             await self.telegram.send_message(message)

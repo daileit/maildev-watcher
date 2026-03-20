@@ -26,9 +26,9 @@ class TelegramNotifier:
     def is_enabled(self) -> bool:
         return bool(self.bot_token and self.chat_ids)
 
-    def build_new_email_message(self, subject: str, sender: str, receiver: str, content: str) -> str:
+    def build_new_email_message(self, mailid: str, subject: str, sender: str, receiver: str, content: str) -> str:
         message_lines = [
-            "⛑ 📨 New email received! ",
+            f"⛑ 📨 New email received! ID: `{mailid or '-'}`",
             f"[Subject: {subject or '-'}]",
             f"From: {sender or '-'}",
             f"To: {receiver or '-'}",
