@@ -263,15 +263,20 @@ class EmailProcessor:
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
         extracted_content = str(email.get("text") or mail_detail.get("text") or "")
         ai_content = extracted_content or str(email.get("html") or mail_detail.get("html") or "")
-        extracted_code = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
+        ai_result = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
+        extracted_type = "other"
+        extracted_code = None
+        if ai_result:
+            extracted_type = str(ai_result.get("type") or "other")
+            extracted_code = str(ai_result.get("content") or "").strip() or None
 
         with self.db.transaction() as cursor:
             cursor.execute(
                 """
-                INSERT INTO `mw_metadata` (`mailid`, `from`, `to`, `timestamp`, `subject`, `extracted_code`, `extracted_content`)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO `mw_metadata` (`mailid`, `from`, `to`, `timestamp`, `subject`, `extracted_code`, `extracted_type`, `extracted_content`)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (mailid, sender, receiver, email_time, subject, extracted_code, extracted_content),
+                (mailid, sender, receiver, email_time, subject, extracted_code, extracted_type, extracted_content),
             )
             cursor.execute(
                 """
@@ -372,7 +377,7 @@ class EmailProcessor:
         metadata = self.db.fetch_one(
             """
             SELECT `id`, `mailid`, `from`, `to`, `timestamp`, `subject`,
-                   `extracted_code`, `extracted_content`
+                 `extracted_code`, `extracted_type`, `extracted_content`
             FROM `mw_metadata`
             WHERE `mailid` = %s
             LIMIT 1
@@ -401,6 +406,7 @@ class EmailProcessor:
             "timestamp": metadata.get("timestamp").isoformat() if metadata.get("timestamp") else None,
             "subject": metadata.get("subject") or "",
             "extracted_code": metadata.get("extracted_code") or "",
+            "extracted_type": metadata.get("extracted_type") or "other",
             "extracted_content": metadata.get("extracted_content") or "",
             "raw": {
                 "headers": raw_content.get("raw_header") if raw_content else "",

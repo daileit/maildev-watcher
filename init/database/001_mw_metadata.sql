@@ -10,10 +10,12 @@ CREATE TABLE IF NOT EXISTS `mw_metadata` (
     `subject`           TEXT,
     `raw_file`          VARCHAR(1024),
     `extracted_code`    VARCHAR(255),
+    `extracted_type`    VARCHAR(64)    NOT NULL DEFAULT 'other',
     `extracted_content` TEXT,
     PRIMARY KEY (`id`),
     INDEX `idx_mailid`    (`mailid`),
     INDEX `idx_from`      (`from`(255)),
     INDEX `idx_to`        (`to`(255)),
+    INDEX `idx_extracted_type` (`extracted_type`),
     INDEX `idx_timestamp` (`timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

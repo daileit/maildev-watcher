@@ -1,7 +1,8 @@
 import asyncio
+import json
 import re
 import random
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from openai import OpenAI
 
@@ -25,6 +26,8 @@ class EmailAI:
     _LONG_WORD_RE = re.compile(r"\S{65,}")
     _SPACE_RE = re.compile(r"[ \t]{2,}")
     _NEWLINE_RE = re.compile(r"\n{3,}")
+    _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+    _ALLOWED_TYPES = {"change_email", "win_prize", "otp_code", "other"}
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, base_url: Optional[str] = None):
         self.api_key = str(openai_config.get("OPENAI_API_KEY") or "").strip()
@@ -114,9 +117,48 @@ class EmailAI:
 
         return cleaned
 
-    def _summarize_sync(self, content: str) -> str:
+    def _normalize_type(self, value: Any) -> str:
+        normalized = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized in self._ALLOWED_TYPES:
+            return normalized
+        return "other"
+
+    def _parse_ai_payload(self, response_text: str) -> Dict[str, str]:
+        raw = (response_text or "").strip()
+        if not raw:
+            return {"type": "other", "content": ""}
+
+        parsed: Dict[str, Any] = {}
+
+        candidates = [raw]
+        json_match = self._JSON_OBJECT_RE.search(raw)
+        if json_match:
+            candidates.insert(0, json_match.group(0))
+
+        for candidate in candidates:
+            try:
+                loaded = json.loads(candidate)
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(loaded, dict):
+                parsed = loaded
+                break
+
+        if not parsed:
+            return {"type": "other", "content": raw}
+
+        content = str(parsed.get("content") or "").strip()
+        if not content:
+            content = raw
+
+        return {
+            "type": self._normalize_type(parsed.get("type")),
+            "content": content,
+        }
+
+    def _summarize_sync(self, content: str) -> Dict[str, str]:
         if not self.client:
-            return ""
+            return {"type": "other", "content": ""}
 
         last_exc = None
         ignore_model = ""
@@ -131,10 +173,13 @@ class EmailAI:
                         {
                             "role": "system",
                             "content": (
-                                f"You are an email assistant. Summarize the email content in one super short sentence "
-                                f"that captures the very main information only. Reply in {self.language}. "
-                                f"If there is a login code or OTP in the content, use double quotes (\") to quote the code. "
-                                f"Output only the summary sentence, nothing else, no reasoning."
+                                f"You are an email assistant. Reply in {self.language}. "
+                                f"Classify and summarize the email into strict JSON with this exact shape: "
+                                f"{{\"type\":\"...\",\"content\":\"...\"}}. "
+                                f"Allowed type values are only: change_email, win_prize, otp_code, other. "
+                                f"If unsure, use type=other. Keep content as one very short sentence of the main point. "
+                                f"If there is an OTP/login code, include it in content wrapped in double quotes. "
+                                f"Output JSON only, no markdown, no explanation."
                             ),
                         },
                         {"role": "user", "content": content},
@@ -149,7 +194,7 @@ class EmailAI:
                 
                 response = self.client.chat.completions.create(**create_kwargs)
                 if response.choices and response.choices[0].message.content:
-                    return (response.choices[0].message.content).strip()
+                    return self._parse_ai_payload(response.choices[0].message.content)
                 else:
                     logger.warning(f"OpenAI API response missing content with model {selected_model}: {response}")
                     last_exc = Exception(f"Empty response content from model {selected_model}")
@@ -161,9 +206,9 @@ class EmailAI:
 
         if last_exc:
             raise last_exc
-        return ""
+        return {"type": "other", "content": ""}
 
-    async def summarize(self, content: str) -> Optional[str]:
+    async def summarize(self, content: str) -> Optional[Dict[str, str]]:
         if not self.is_enabled():
             logger.debug("EmailAI disabled: OPENAI_API_KEY not configured")
             return None
@@ -174,7 +219,7 @@ class EmailAI:
             return None
         try:
             summary = await asyncio.to_thread(self._summarize_sync, prepared_content)
-            logger.info(f"AI summary: {summary!r}")
+            logger.info(f"AI summary payload: {summary!r}")
             return summary or None
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"AI summarization failed: {exc}")
