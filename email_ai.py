@@ -176,7 +176,7 @@ class EmailAI:
                                 f"You are an email assistant. Reply in {self.language}. "
                                 f"Classify and summarize the email into strict JSON with this exact shape: "
                                 f"{{\"type\":\"...\",\"content\":\"...\"}}. "
-                                f"Allowed type values are only: change_email, win_prize, otp_code, info_updated, other. "
+                                f"Allowed type values are only: change_email, win_prize, otp_code, other. "
                                 f"If unsure, use type=other. Keep content as one very short sentence of the main point. "
                                 f"If there is an OTP/login code, include it in content wrapped in double quotes. "
                                 f"Output JSON only, no markdown, no explanation."
