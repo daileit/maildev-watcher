@@ -171,9 +171,43 @@ class EmailProcessor:
 
         return datetime.now()
 
+    def _contains_iso2022jp_marker(self, value: Any) -> bool:
+        marker = b"\x1b$B"
+        if isinstance(value, bytes):
+            return marker in value
+        if isinstance(value, str):
+            return marker.decode("ascii") in value
+        return False
+
+    def _decode_iso2022jp(self, value: Any) -> Any:
+        if isinstance(value, bytes):
+            if not self._contains_iso2022jp_marker(value):
+                return value
+            try:
+                return value.decode("iso-2022-jp")
+            except UnicodeDecodeError:
+                return value
+
+        if isinstance(value, str):
+            if not self._contains_iso2022jp_marker(value):
+                return value
+            try:
+                return value.encode("latin-1").decode("iso-2022-jp")
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                return value
+
+        if isinstance(value, list):
+            return [self._decode_iso2022jp(item) for item in value]
+
+        if isinstance(value, dict):
+            return {key: self._decode_iso2022jp(item) for key, item in value.items()}
+
+        return value
+
     def _build_raw_content(self, email: Dict[str, Any], detail: Dict[str, Any]) -> Tuple[str, str]:
         merged_email = dict(email)
         merged_email.update(detail or {})
+        merged_email = self._decode_iso2022jp(merged_email)
 
         raw_header = ""
         raw_body = ""
@@ -220,6 +254,7 @@ class EmailProcessor:
         return self.maildev_sender_blacklist in sender.lower()
 
     async def _store_email(self, email: Dict[str, Any]) -> None:
+        email = self._decode_iso2022jp(email)
         mailid = self._extract_mailid(email)
         if not mailid:
             logger.warning("Queue item skipped: missing mail id")
@@ -257,12 +292,13 @@ class EmailProcessor:
             await self._delete_maildev_email(mailid)
             return
 
-        subject = str(email.get("subject") or "")
+        subject = str(self._decode_iso2022jp(email.get("subject") or ""))
 
         mail_detail = await self._fetch_mail_detail(mailid)
+        mail_detail = self._decode_iso2022jp(mail_detail)
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
-        extracted_content = str(email.get("text") or mail_detail.get("text") or "")
-        ai_content = extracted_content or str(email.get("html") or mail_detail.get("html") or "")
+        extracted_content = str(self._decode_iso2022jp(email.get("text") or mail_detail.get("text") or ""))
+        ai_content = extracted_content or str(self._decode_iso2022jp(email.get("html") or mail_detail.get("html") or ""))
         ai_result = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
         extracted_type = "other"
         extracted_code = None
