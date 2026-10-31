@@ -26,7 +26,17 @@ class EmailProcessor:
         self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
         self.maildev_timeout = float(app_config.get("APP_MAILDEV_TIMEOUT"))
         self.maildev_receiver_whitelist = str(app_config.get("APP_MAILDEV_RECEIVER_WHITELIST") or "").strip().lower()
-        self.maildev_sender_blacklist = str(app_config.get("APP_MAILDEV_SENDER_BLACKLIST") or "").strip().lower()
+        self.maildev_receiver_whitelist = [
+            item.strip().lower()
+            for item in str(app_config.get("APP_MAILDEV_RECEIVER_WHITELIST") or "").split(",")
+            if item.strip()
+        ]
+
+        self.maildev_sender_blacklist = [
+            item.strip().lower()
+            for item in str(app_config.get("APP_MAILDEV_SENDER_BLACKLIST") or "").split(",")
+            if item.strip()
+        ]
         self.queue_name = queue_name
 
         self.redis = RedisClient()
@@ -246,12 +256,17 @@ class EmailProcessor:
     def _should_drop_by_receiver_whitelist(self, receiver: str) -> bool:
         if not self.maildev_receiver_whitelist:
             return False
-        return self.maildev_receiver_whitelist not in receiver.lower()
+        receiver_lc = receiver.lower()
+        # Drops the email if NONE of the whitelist patterns match the receiver
+        return not any(domain in receiver_lc for domain in self.maildev_receiver_whitelist)
+
 
     def _should_drop_by_sender_blacklist(self, sender: str) -> bool:
         if not self.maildev_sender_blacklist:
             return False
-        return self.maildev_sender_blacklist in sender.lower()
+        sender_lc = sender.lower()
+        # Drops the email if ANY of the blacklist patterns match the sender
+        return any(domain in sender_lc for domain in self.maildev_sender_blacklist)
 
     async def _store_email(self, email: Dict[str, Any]) -> None:
         email = self._decode_iso2022jp(email)
