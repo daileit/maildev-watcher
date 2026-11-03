@@ -41,6 +41,8 @@ class Config:
         self._configs['APP_MODEL_DELAY'] = os.getenv('APP_MODEL_DELAY', '120')
         self._configs['APP_MAILDEV_ENDPOINT'] = os.getenv('APP_MAILDEV_ENDPOINT',  os.getenv('MAILDEV_ENDPOINT', 'http://localhost:1080'))
         self._configs['APP_MAILDEV_TIMEOUT'] = os.getenv('APP_MAILDEV_TIMEOUT',  os.getenv('MAILDEV_TIMEOUT', '10'))
+        self._configs['APP_MAILDEV_AUTH_USER'] = os.getenv('APP_MAILDEV_AUTH_USER', '')
+        self._configs['APP_MAILDEV_AUTH_PW'] = os.getenv('APP_MAILDEV_AUTH_PW', '')
         self._configs['APP_MAILDEV_RECEIVER_WHITELIST'] = os.getenv('APP_MAILDEV_RECEIVER_WHITELIST', '')
         self._configs['APP_MAILDEV_SENDER_BLACKLIST'] = os.getenv('APP_MAILDEV_SENDER_BLACKLIST', '')
         self._configs['APP_CONSOLE_URL'] = os.getenv('APP_CONSOLE_URL', 'https://daileit.com')

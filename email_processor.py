@@ -25,6 +25,9 @@ class EmailProcessor:
     def __init__(self, queue_name: str = "mw_incoming_emails"):
         self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
         self.maildev_timeout = float(app_config.get("APP_MAILDEV_TIMEOUT"))
+        maildev_auth_user = str(app_config.get("APP_MAILDEV_AUTH_USER") or "")
+        maildev_auth_pw = str(app_config.get("APP_MAILDEV_AUTH_PW") or "")
+        self.maildev_auth = (maildev_auth_user, maildev_auth_pw) if maildev_auth_user else None
         self.maildev_receiver_whitelist = str(app_config.get("APP_MAILDEV_RECEIVER_WHITELIST") or "").strip().lower()
         self.maildev_receiver_whitelist = [
             item.strip().lower()
@@ -54,7 +57,7 @@ class EmailProcessor:
     async def fetch_maildev_email_list(self) -> List[Dict[str, Any]]:
         url = f"{self.maildev_endpoint}/email"
         try:
-            async with httpx.AsyncClient(timeout=self.maildev_timeout) as client:
+            async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 payload = response.json()
@@ -95,7 +98,7 @@ class EmailProcessor:
     async def _fetch_mail_detail(self, mailid: str) -> Dict[str, Any]:
         url = f"{self.maildev_endpoint}/email/{mailid}"
         try:
-            async with httpx.AsyncClient(timeout=self.maildev_timeout) as client:
+            async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 payload = response.json()
@@ -108,7 +111,7 @@ class EmailProcessor:
     async def _delete_maildev_email(self, mailid: str) -> bool:
         url = f"{self.maildev_endpoint}/email/{mailid}"
         try:
-            async with httpx.AsyncClient(timeout=self.maildev_timeout) as client:
+            async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
                 response = await client.delete(url)
                 response.raise_for_status()
             logger.info(f"Deleted email {mailid} from MailDev")
