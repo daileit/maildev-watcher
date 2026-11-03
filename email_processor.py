@@ -30,6 +30,7 @@ class EmailProcessor:
         maildev_auth_pw = str(app_config.get("APP_MAILDEV_AUTH_PW") or "")
         self.maildev_auth = (maildev_auth_user, maildev_auth_pw) if maildev_auth_user else None
         self.maildev_api_version = str(app_config.get("APP_MAILDEV_API_VERSION") or "auto").strip().lower()
+        self.maildev_dkim_filter = str(app_config.get("APP_MAILDEV_DKIM_FILTER") or "false").strip().lower() == "true"
         self._maildev_email_path: Optional[str] = (
             "/api/email" if self.maildev_api_version == "3" else "/email" if self.maildev_api_version != "auto" else None
         )
@@ -397,20 +398,26 @@ class EmailProcessor:
 
         mail_detail = await self._fetch_mail_detail(mailid)
         mail_detail = self._decode_iso2022jp(mail_detail)
+        has_dkim = self._has_dkim_signature(email, mail_detail)
+
+        if not has_dkim and self.maildev_dkim_filter:
+            logger.info(f"Discarded email {mailid}: no DKIM-Signature header present (APP_MAILDEV_DKIM_FILTER enabled)")
+            await self._delete_maildev_email(mailid)
+            return
+
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
         extracted_content = str(self._decode_iso2022jp(email.get("text") or mail_detail.get("text") or ""))
+        ai_content = extracted_content or str(self._decode_iso2022jp(email.get("html") or mail_detail.get("html") or ""))
+        ai_result = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
         extracted_type = "other"
         extracted_code = None
+        if ai_result:
+            extracted_type = str(ai_result.get("type") or "other")
+            extracted_code = str(ai_result.get("content") or "").strip() or None
 
-        if not self._has_dkim_signature(email, mail_detail):
+        if not has_dkim:
             logger.info(f"Flagged email {mailid} as spam: no DKIM-Signature header present")
             extracted_type = "spam"
-        else:
-            ai_content = extracted_content or str(self._decode_iso2022jp(email.get("html") or mail_detail.get("html") or ""))
-            ai_result = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
-            if ai_result:
-                extracted_type = str(ai_result.get("type") or "other")
-                extracted_code = str(ai_result.get("content") or "").strip() or None
 
         with self.db.transaction() as cursor:
             cursor.execute(
