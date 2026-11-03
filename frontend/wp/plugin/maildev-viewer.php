@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: MailDev Viewer
- * Description: Quản lý, hiển thị email. Thêm Filter Type, Export CSV & Fix Mobile Layout.
- * Version: 2.4
+ * Description: Quản lý, hiển thị email. Thêm Filter Type, Items Per Page, Export CSV & Balanced UI Toolbar.
+ * Version: 2.8
  * Author: Dai Le (daileit.com)
  */
 
@@ -76,6 +76,7 @@ class MailDev_Viewer_Plugin {
                 <div class="maildev-list-pane">
                     
                     <div class="md-toolbar">
+                        <!-- Hàng 1: Search - Refresh - Export -->
                         <div class="md-toolbar-row">
                             <div class="md-search-wrapper">
                                 <svg class="md-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -84,24 +85,28 @@ class MailDev_Viewer_Plugin {
                             <button class="md-btn md-btn-icon md-control-height" @click="fetchEmails" title="Tải lại">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                             </button>
-                        </div>
-                        
-                        <div class="md-toolbar-actions">
-                            <button class="md-btn md-export-btn md-control-height" @click="exportCSV" :disabled="isExporting">
+                            <button class="md-btn md-export-btn md-control-height" @click="exportCSV" :disabled="isExporting" title="Xuất CSV">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                                 <span class="md-hide-mobile">{{ isExporting ? 'Đang xuất...' : 'Export' }}</span>
                             </button>
+                        </div>
+                        
+                        <!-- Hàng 2: PerPage Dropdown - Type Dropdown - Counter -->
+                        <div class="md-toolbar-row">
+                            <select v-model="perPage" @change="handlePerPageChange" class="md-select md-control-height md-select-perpage">
+                                <option :value="50">50 / trang</option>
+                                <option :value="100">100 / trang</option>
+                                <option :value="500">500 / trang</option>
+                                <option :value="1000">1000 / trang</option>
+                            </select>
 
-                            <div class="md-filter-group">
-                                <span class="md-filter-label">Lọc :</span>
-                                <select v-model="selectedType" @change="handleSearch" class="md-select md-control-height">
-                                    <option value="">Tất cả loại</option>
-                                    <option v-for="type in availableTypes" :key="type" :value="type">{{ type }}</option>
-                                </select>
-                                
-                                <div class="md-query-counter" title="Số lượng email">
-                                    {{ totalItems }}
-                                </div>
+                            <select v-model="selectedType" @change="handleSearch" class="md-select md-control-height md-select-type">
+                                <option value="">Tất cả loại</option>
+                                <option v-for="type in availableTypes" :key="type" :value="type">{{ type }}</option>
+                            </select>
+                            
+                            <div class="md-query-counter md-control-height" title="Tổng số email">
+                                {{ totalItems }}
                             </div>
                         </div>
                     </div>
@@ -151,19 +156,19 @@ class MailDev_Viewer_Plugin {
                         <div v-if="emails.length === 0" class="md-empty-state"><p>Không tìm thấy email nào.</p></div>
                     </div>
 
-                    <div class="md-pagination" v-if="totalPages > 1">
+                    <div class="md-pagination" v-if="totalItems > 0">
                         <div class="md-page-nav-group">
                             <button class="md-btn md-btn-outline md-btn-small md-btn-icon-only" :disabled="currentPage === 1" @click="changePage(1)">&laquo;</button>
                             <button class="md-btn md-btn-outline md-btn-small md-btn-icon-only" :disabled="currentPage === 1" @click="changePage(currentPage - 1)">&lsaquo;</button>
                         </div>
                         <div class="md-page-info">
-                            <input type="number" v-model.lazy="inputPage" @change="goToPage" @keyup.enter="goToPage" class="md-page-input" min="1" :max="totalPages">
+                            <input type="number" v-model.lazy="inputPage" @change="goToPage" @keyup.enter="goToPage" class="md-page-input" min="1" :max="totalPages || 1">
                             <span class="md-page-divider">/</span>
-                            <span class="md-page-total">{{ totalPages }}</span>
+                            <span class="md-page-total">{{ totalPages || 1 }}</span>
                         </div>
                         <div class="md-page-nav-group">
-                            <button class="md-btn md-btn-outline md-btn-small md-btn-icon-only" :disabled="currentPage === totalPages" @click="changePage(currentPage + 1)">&rsaquo;</button>
-                            <button class="md-btn md-btn-outline md-btn-small md-btn-icon-only" :disabled="currentPage === totalPages" @click="changePage(totalPages)">&raquo;</button>
+                            <button class="md-btn md-btn-outline md-btn-small md-btn-icon-only" :disabled="currentPage >= totalPages" @click="changePage(currentPage + 1)">&rsaquo;</button>
+                            <button class="md-btn md-btn-outline md-btn-small md-btn-icon-only" :disabled="currentPage >= totalPages" @click="changePage(totalPages)">&raquo;</button>
                         </div>
                     </div>
                 </div>
@@ -305,9 +310,8 @@ class MailDev_Viewer_Plugin {
             .maildev-header-main { margin-bottom: 20px; }
             .maildev-app-title { font-size: 24px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 10px; margin: 0; letter-spacing: -0.5px;}
             
-            /* Tabs Fix Mobile break word */
             .md-tabs-container { display: flex; gap: 10px; margin-bottom: 15px; border-bottom: 2px solid #e2e8f0; overflow-x: auto; flex-wrap: nowrap; }
-            .md-tabs-container::-webkit-scrollbar { display: none; } /* Hide scrollbar for tabs */
+            .md-tabs-container::-webkit-scrollbar { display: none; }
             .md-tab-btn { background: transparent; border: none; padding: 10px 20px; font-size: 15px; font-weight: 600; color: #64748b; cursor: pointer; display: flex; align-items: center; gap: 8px; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; white-space: nowrap;}
             .md-tab-btn svg { width: 18px; height: 18px; }
             .md-tab-btn:hover { color: #0f172a; }
@@ -317,35 +321,30 @@ class MailDev_Viewer_Plugin {
             .maildev-list-pane { width: 40%; min-width: 440px; max-width: 580px; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; background: #fff; z-index: 10; height: 100%;}
             .maildev-detail-pane { flex: 1; display: flex; flex-direction: column; background: #fff; min-width: 0; position: relative;}
             
-            /* =================== NEW TOOLBAR STYLES =================== */
-            .md-toolbar { padding: 14px 16px; border-bottom: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 12px; background: #f8fafc;}
-            .md-toolbar-row { display: flex; gap: 10px; align-items: center; width: 100%; }
-            .md-toolbar-actions { display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 10px;}
+            /* Clean & Balanced 2-Row Grid Toolbar */
+            .md-toolbar { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 8px; background: #f8fafc;}
+            .md-toolbar-row { display: flex; gap: 8px; align-items: center; width: 100%; }
             
-            .md-control-height { height: 38px !important; box-sizing: border-box; }
+            .md-control-height { height: 36px !important; box-sizing: border-box; }
             
-            .md-search-wrapper { position: relative; flex: 1; min-width: 200px; display: flex; align-items: center;}
-            .md-search-icon { position: absolute; left: 12px; color: #94a3b8; width: 16px; height: 16px; z-index: 2;}
+            .md-search-wrapper { position: relative; flex: 1; min-width: 0; display: flex; align-items: center;}
+            .md-search-icon { position: absolute; left: 10px; color: #94a3b8; width: 16px; height: 16px; z-index: 2;}
             
-            .md-input { width: 100%; padding: 0 12px 0 36px !important; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; background: #fff; color: #0f172a; margin: 0 !important; }
+            .md-input { width: 100%; padding: 0 10px 0 32px !important; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; background: #fff; color: #0f172a; margin: 0 !important; }
             .md-input:focus, .md-select:focus { border-color: #3b82f6; background: #fff; outline: none; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;}
             
-            /* Cụm Filter Dropdown & Counter */
-            .md-filter-group { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-            .md-filter-label { font-size: 13px; font-weight: 600; color: #64748b; white-space: nowrap;}
-            .md-select { padding: 0 30px 0 12px !important; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; background: #fff; color: #0f172a; width: auto; flex: none; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);}
+            .md-select { padding: 0 24px 0 10px !important; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 13px; background: #fff; color: #0f172a; cursor: pointer; box-shadow: inset 0 1px 2px rgba(0,0,0,0.02);}
+            .md-select-perpage { flex: 1; min-width: 110px; }
+            .md-select-type { flex: 1.5; min-width: 130px; }
             
-            /* Counter Badge Style */
-            .md-query-counter { font-size: 13px; color: #fff; font-weight: 700; background: #3b82f6; padding: 0 10px; border-radius: 20px; height: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);}
+            .md-query-counter { font-size: 12px; color: #fff; font-weight: 700; background: #3b82f6; padding: 0 12px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.25); white-space: nowrap; flex-shrink: 0;}
             
-            /* Nút bấm */
-            .md-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; background: #3b82f6; color: #fff; transition: all 0.15s;}
+            .md-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; background: #3b82f6; color: #fff; transition: all 0.15s; white-space: nowrap;}
             .md-btn:hover { background: #2563eb; color: #fff; }
-            .md-btn-icon { padding: 0 10px; background: #fff; color: #64748b; border: 1px solid #cbd5e1; }
+            .md-btn-icon { padding: 0 10px; background: #fff; color: #64748b; border: 1px solid #cbd5e1; flex-shrink: 0;}
             .md-btn-outline { background: #fff; border: 1px solid #cbd5e1; color: #475569; }
             
-            /* Export Button Emerald */
-            .md-export-btn { background: #10b981; color: white; border: none;}
+            .md-export-btn { background: #10b981; color: white; border: none; flex-shrink: 0;}
             .md-export-btn:hover { background: #059669; }
             
             .md-btn-danger { background: #ef4444; color: white; }
@@ -367,13 +366,12 @@ class MailDev_Viewer_Plugin {
             .md-mail-checkbox { padding-top: 2px; }
             .md-mail-content { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 12px; }
             
-            /* =================== FIX SPACING TO / FROM / TITLE =================== */
             .md-mail-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
             .md-mail-line { display: flex; align-items: center; font-size: 13px; color: #475569;}
             .md-label { 
                 display: inline-block; 
                 min-width: 44px;
-                padding-right: 8px; /* TẠO PADDING TRÁNH SÁT CHỮ */
+                padding-right: 8px;
                 font-size: 10px; 
                 text-transform: uppercase; 
                 font-weight: 700; 
@@ -383,7 +381,6 @@ class MailDev_Viewer_Plugin {
             }
             .md-mail-line-val { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .md-mail-line strong { color: #0f172a; font-weight: 600; }
-            /* ==================================================================== */
 
             .md-type-badge { display: inline-block; background: #f1f5f9; color: #475569; font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; border: 1px solid #e2e8f0;}
             .md-mail-meta-right { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; flex-shrink: 0; gap: 6px;}
@@ -457,28 +454,9 @@ class MailDev_Viewer_Plugin {
                 .maildev-container.mobile-show-detail .maildev-detail-pane { transform: translateX(0); }
                 .maildev-container.mobile-show-detail .maildev-list-pane { display: none; }
                 
-                /* Toolbar Mobile Fixes */
-                .md-toolbar-actions {
-                    flex-direction: row;
-                    flex-wrap: nowrap; /* Không cho rớt dòng */
-                    justify-content: space-between;
-                    width: 100%;
-                    gap: 10px;
-                }
-                .md-export-btn { padding: 0 10px; } /* Thu nhỏ nút export */
+                .md-export-btn { padding: 0 8px; }
                 .md-export-btn span.md-hide-mobile { display: none; }
                 
-                .md-filter-group { 
-                    margin-left: auto; 
-                    flex-wrap: nowrap; 
-                    width: auto;
-                }
-                
-                /* Ẩn chữ 'Lọc :' trên màn cực nhỏ */
-                @media (max-width: 400px) {
-                    .md-filter-label { display: none; }
-                }
-
                 .md-mobile-back-btn { display: inline-flex !important; margin-bottom: 10px;}
                 .md-hide-mobile { display: none !important; }
                 .md-show-mobile { display: inline-flex !important; }
@@ -515,6 +493,7 @@ class MailDev_Viewer_Plugin {
                     const searchQuery = ref('');
                     const selectedType = ref('');
                     const availableTypes = ref([]);
+                    const perPage = ref(50);
 
                     const selectedMails = ref([]);
                     const isExporting = ref(false);
@@ -569,6 +548,7 @@ class MailDev_Viewer_Plugin {
                         try {
                             const url = new URL(`${apiBaseUrl}/emails`);
                             url.searchParams.append('page', currentPage.value);
+                            url.searchParams.append('per_page', perPage.value);
                             if (searchQuery.value) url.searchParams.append('search', searchQuery.value);
                             if (selectedType.value) url.searchParams.append('type', selectedType.value); 
                             
@@ -580,6 +560,11 @@ class MailDev_Viewer_Plugin {
                             selectedMails.value = []; 
                             inputPage.value = currentPage.value; 
                         } catch (err) { console.error('Lỗi fetch:', err); }
+                    };
+
+                    const handlePerPageChange = () => {
+                        currentPage.value = 1;
+                        fetchEmails();
                     };
 
                     const exportCSV = async () => {
@@ -620,11 +605,18 @@ class MailDev_Viewer_Plugin {
                     };
 
                     const handleSearch = () => { currentPage.value = 1; fetchEmails(); };
-                    const changePage = (page) => { if (page >= 1 && page <= totalPages.value) { currentPage.value = page; fetchEmails(); } };
+                    const changePage = (page) => { 
+                        const maxP = totalPages.value || 1;
+                        if (page >= 1 && page <= maxP) { 
+                            currentPage.value = page; 
+                            fetchEmails(); 
+                        } 
+                    };
                     const goToPage = () => {
                         let p = parseInt(inputPage.value);
+                        const maxP = totalPages.value || 1;
                         if(isNaN(p) || p < 1) p = 1;
-                        if(p > totalPages.value) p = totalPages.value;
+                        if(p > maxP) p = maxP;
                         inputPage.value = p; 
                         changePage(p);
                     };
@@ -694,8 +686,8 @@ class MailDev_Viewer_Plugin {
                     return { 
                         isAdmin, currentTab, statsData,
                         emails, activeMailId, activeMail, loadingInit, 
-                        currentPage, totalPages, totalItems, inputPage, searchQuery, selectedType, availableTypes, selectedMails, selectAll, iframeContent, maxDailyCount, isExporting,
-                        formatDateTime, formatDateShort, fetchEmails, exportCSV, loadStats, handleSearch, changePage, goToPage, viewDetail, closeDetailMobile, deleteMail, bulkDelete
+                        currentPage, totalPages, totalItems, inputPage, searchQuery, selectedType, availableTypes, perPage, selectedMails, selectAll, iframeContent, maxDailyCount, isExporting,
+                        formatDateTime, formatDateShort, fetchEmails, handlePerPageChange, exportCSV, loadStats, handleSearch, changePage, goToPage, viewDetail, closeDetailMobile, deleteMail, bulkDelete
                     };
                 }
             }).mount('#maildev-app');
@@ -727,7 +719,9 @@ class MailDev_Viewer_Plugin {
 
     public function api_get_emails($request) {
         global $wpdb;
-        $per_page = 50;
+        $requested_per_page = (int) $request->get_param('per_page');
+        $per_page = ($requested_per_page > 0) ? min(1000, max(10, $requested_per_page)) : 50;
+
         $page = max(1, (int) $request->get_param('page'));
         $offset = ($page - 1) * $per_page;
         $search = sanitize_text_field($request->get_param('search'));
