@@ -27,6 +27,8 @@ class BackgroundTaskRunner:
         if self._tasks:
             return
 
+        self.processor.requeue_stale_processing_items()
+
         self._stop_event.clear()
         self._tasks = [
             asyncio.create_task(self._producer_loop(), name="maildev-producer"),

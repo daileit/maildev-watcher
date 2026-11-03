@@ -19,6 +19,7 @@ class EmailAI:
     """Lightweight AI helper for email content summarization."""
 
     _FAILED_MODEL_TTL_SECONDS = 3600
+    _FAILED_KEY_TTL_SECONDS = 3600
     _MAX_AI_ATTEMPTS = 5
     _MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^\)]+\)", re.IGNORECASE)
     _HTML_IMAGE_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
@@ -30,14 +31,15 @@ class EmailAI:
     _ALLOWED_TYPES = {"change_email", "win_prize", "otp_code", "other"}
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, base_url: Optional[str] = None):
-        self.api_key = str(openai_config.get("OPENAI_API_KEY") or "").strip()
+        self.api_key_config = api_key or openai_config.get("OPENAI_API_KEY", "")
         self.model_config = model or openai_config.get("OPENAI_MODELS", "gpt-4o")
         self.base_url = base_url or openai_config.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.language = str(openai_config.get("OPENAI_LANGUAGE") or "English").strip()
 
-        if not self.api_key:
+        self.key_list = [k.strip() for k in str(self.api_key_config).split(",") if k.strip()]
+
+        if not self.key_list:
             logger.warning("OpenAI API key not configured; EmailAI is disabled")
-            self.client = None
             self.model_list = ["gpt-4o"]
             self.redis = None
             return
@@ -46,12 +48,10 @@ class EmailAI:
         if not self.model_list:
             self.model_list = ["gpt-4o"]
 
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
-
         try:
             self.redis = RedisClient()
         except Exception as exc:  # noqa: BLE001
-            logger.warning(f"Redis client initialization failed: {exc}. Model ignore cache disabled.")
+            logger.warning(f"Redis client initialization failed: {exc}. Model/key ignore cache disabled.")
             self.redis = None
 
         if len(self.model_list) > 1:
@@ -65,8 +65,11 @@ class EmailAI:
                 f"model: {self.model_list[0]}"
             )
 
+        if len(self.key_list) > 1:
+            logger.info(f"EmailAI configured with {len(self.key_list)} API keys (random selection enabled)")
+
     def is_enabled(self) -> bool:
-        return self.client is not None
+        return bool(self.key_list)
 
     def _get_model(self, ignore_model: str = "") -> str:
         if ignore_model and self.redis:
@@ -99,6 +102,38 @@ class EmailAI:
         selected_model = random.choice(self.model_list)
         logger.warning(f"All models are ignored. Returning random model anyway: {selected_model}")
         return selected_model
+
+    def _get_key(self, ignore_key: str = "") -> str:
+        if ignore_key and self.redis:
+            ignore_cache_key = f"maildev_watcher:ignored_key:{ignore_key[-6:]}"
+            try:
+                self.redis.set_string(ignore_cache_key, "1", ttl=self._FAILED_KEY_TTL_SECONDS)
+                logger.info(
+                    f"Cached ignored API key ending in {ignore_key[-6:]} (TTL: {self._FAILED_KEY_TTL_SECONDS}s)"
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"Failed to cache ignored API key: {exc}")
+
+        if len(self.key_list) == 1:
+            return self.key_list[0]
+
+        max_attempts = len(self.key_list)
+        for _ in range(max_attempts):
+            selected_key = random.choice(self.key_list)
+            if self.redis:
+                ignore_cache_key = f"maildev_watcher:ignored_key:{selected_key[-6:]}"
+                try:
+                    if self.redis.get_string(ignore_cache_key):
+                        continue
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(f"Failed to check ignore cache for API key: {exc}")
+
+            logger.debug(f"Selected API key ending in {selected_key[-6:]}")
+            return selected_key
+
+        selected_key = random.choice(self.key_list)
+        logger.warning(f"All API keys are ignored. Returning random key anyway (ending in {selected_key[-6:]})")
+        return selected_key
 
     def _prepare_content(self, content: str) -> str:
         cleaned = self._MARKDOWN_IMAGE_RE.sub(" ", content)
@@ -157,16 +192,19 @@ class EmailAI:
         }
 
     def _summarize_sync(self, content: str) -> Dict[str, str]:
-        if not self.client:
+        if not self.key_list:
             return {"type": "other", "content": ""}
 
         last_exc = None
         ignore_model = ""
+        ignore_key = ""
 
         for _ in range(self._MAX_AI_ATTEMPTS):
             selected_model = self._get_model(ignore_model=ignore_model)
+            selected_key = self._get_key(ignore_key=ignore_key)
             try:
-                logger.info(f"Calling OpenAI API with model {selected_model}")
+                logger.info(f"Calling OpenAI API with model {selected_model}, key ending in {selected_key[-6:]}")
+                client = OpenAI(api_key=selected_key, base_url=self.base_url)
                 create_kwargs = {
                     "model": selected_model,
                     "messages": [
@@ -192,7 +230,7 @@ class EmailAI:
                 # if "gpt" in selected_model.lower():
                 #     create_kwargs["reasoning_format"] = "hidden"
                 
-                response = self.client.chat.completions.create(**create_kwargs)
+                response = client.chat.completions.create(**create_kwargs)
                 if response.choices and response.choices[0].message.content:
                     return self._parse_ai_payload(response.choices[0].message.content)
                 else:
@@ -202,7 +240,8 @@ class EmailAI:
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 ignore_model = selected_model
-                logger.warning(f"AI call failed with model {selected_model}: {exc}")
+                ignore_key = selected_key
+                logger.warning(f"AI call failed with model {selected_model}, key ending in {selected_key[-6:]}: {exc}")
 
         if last_exc:
             raise last_exc

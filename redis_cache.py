@@ -253,6 +253,40 @@ class RedisClient:
     def llen(self, key: str) -> int:
         """Get length of Redis list."""
         return self.client.llen(key)
+
+    # ===== Set Operations =====
+
+    @retry_on_failure()
+    def add_to_set_if_absent(self, key: str, member: str, ttl: Optional[int] = None) -> bool:
+        """
+        Add member to a set only if not already present (SADD), refreshing the set's TTL.
+
+        Returns True if the member was newly added, False if it was already present.
+        """
+        pipe = self.client.pipeline()
+        pipe.sadd(key, member)
+        if ttl:
+            pipe.expire(key, ttl)
+        results = pipe.execute()
+        return bool(results[0])
+
+    @retry_on_failure()
+    def move_list_item(self, source: str, destination: str, src_direction: str = 'left',
+                        dst_direction: str = 'right') -> Optional[str]:
+        """
+        Atomically move one item between lists (LMOVE) and return its raw JSON string.
+
+        Used to pop an item into a "processing" list instead of discarding it outright,
+        so a crash mid-processing leaves it recoverable instead of lost.
+        """
+        wherefrom = 'LEFT' if src_direction.lower() == 'left' else 'RIGHT'
+        whereto = 'LEFT' if dst_direction.lower() == 'left' else 'RIGHT'
+        return self.client.lmove(source, destination, wherefrom, whereto)
+
+    @retry_on_failure()
+    def remove_list_item(self, key: str, raw_value: str, count: int = 1) -> int:
+        """Remove occurrences of a raw (already-serialized) value from a list (LREM)."""
+        return self.client.lrem(key, count, raw_value)
     
     @retry_on_failure()
     def get_list_items(self, key: str, count: int = 1, pop: bool = False, 

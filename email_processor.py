@@ -21,6 +21,7 @@ class EmailProcessor:
     """MailDev email producer/consumer implementation."""
 
     _CACHE_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
+    _ENQUEUE_DEDUP_TTL_SECONDS = 60 * 60  # 1 hour
 
     def __init__(self, queue_name: str = "mw_incoming_emails"):
         self.maildev_endpoint = self._normalize_maildev_endpoint(app_config.get("APP_MAILDEV_ENDPOINT"))
@@ -45,6 +46,8 @@ class EmailProcessor:
             if item.strip()
         ]
         self.queue_name = queue_name
+        self.processing_queue_name = f"{queue_name}:processing"
+        self.enqueue_dedup_set_name = f"{queue_name}:enqueued"
 
         self.redis = RedisClient()
         self.db = DatabaseClient()
@@ -99,26 +102,65 @@ class EmailProcessor:
 
     async def enqueue_maildev_emails(self) -> int:
         emails = await self.fetch_maildev_email_list()
+        enqueued = 0
         for email in emails:
+            mailid = self._extract_mailid(email)
+            if mailid and not self.redis.add_to_set_if_absent(
+                self.enqueue_dedup_set_name, mailid, ttl=self._ENQUEUE_DEDUP_TTL_SECONDS
+            ):
+                # Already enqueued (and not yet deleted from MailDev) in a prior cycle; skip to avoid
+                # re-queuing the same email on every poll until MailDev actually removes it.
+                continue
+
             self.redis.rpush_json(self.queue_name, email)
+            enqueued += 1
 
-        if emails:
-            logger.info(f"Enqueued {len(emails)} email(s) to {self.queue_name}")
+        if enqueued:
+            logger.info(f"Enqueued {enqueued} email(s) to {self.queue_name}")
 
-        return len(emails)
+        return enqueued
+
+    def requeue_stale_processing_items(self) -> int:
+        """
+        Move any items left in the processing list back onto the main queue.
+
+        Called once on startup: if the process crashed/restarted mid-processing,
+        items moved to `processing_queue_name` but never removed (because
+        `_store_email` never finished) would otherwise be lost forever since
+        they already left the main queue.
+        """
+        requeued = 0
+        while True:
+            raw_value = self.redis.move_list_item(
+                self.processing_queue_name,
+                self.queue_name,
+                src_direction="left",
+                dst_direction="left",
+            )
+            if raw_value is None:
+                break
+            requeued += 1
+
+        if requeued:
+            logger.warning(f"Requeued {requeued} stale item(s) from {self.processing_queue_name}")
+
+        return requeued
 
     async def process_one_from_queue(self) -> bool:
-        items = self.redis.get_list_items(
+        raw_value = self.redis.move_list_item(
             self.queue_name,
-            count=1,
-            pop=True,
-            direction="left",
+            self.processing_queue_name,
+            src_direction="left",
+            dst_direction="right",
         )
-        if not items:
+        if raw_value is None:
             return False
 
-        email = items[0]
-        await self._store_email(email)
+        email = json.loads(raw_value)
+        try:
+            await self._store_email(email)
+        finally:
+            self.redis.remove_list_item(self.processing_queue_name, raw_value, count=1)
         return True
 
     async def _fetch_mail_detail(self, mailid: str) -> Dict[str, Any]:
@@ -299,6 +341,19 @@ class EmailProcessor:
         # Drops the email if ANY of the blacklist patterns match the sender
         return any(domain in sender_lc for domain in self.maildev_sender_blacklist)
 
+    def _has_dkim_signature(self, email: Dict[str, Any], detail: Dict[str, Any]) -> bool:
+        """Presence-only check: any legitimate mail provider signs with DKIM, scanners/scammers rarely bother."""
+        for source in (detail, email):
+            headers = source.get("headers") if isinstance(source, dict) else None
+            if not isinstance(headers, dict):
+                continue
+            value = headers.get("dkim-signature")
+            if isinstance(value, list):
+                value = value[0] if value else None
+            if str(value or "").strip():
+                return True
+        return False
+
     async def _store_email(self, email: Dict[str, Any]) -> None:
         email = self._decode_iso2022jp(email)
         mailid = self._extract_mailid(email)
@@ -344,13 +399,18 @@ class EmailProcessor:
         mail_detail = self._decode_iso2022jp(mail_detail)
         raw_header, raw_body = self._build_raw_content(email, mail_detail)
         extracted_content = str(self._decode_iso2022jp(email.get("text") or mail_detail.get("text") or ""))
-        ai_content = extracted_content or str(self._decode_iso2022jp(email.get("html") or mail_detail.get("html") or ""))
-        ai_result = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
         extracted_type = "other"
         extracted_code = None
-        if ai_result:
-            extracted_type = str(ai_result.get("type") or "other")
-            extracted_code = str(ai_result.get("content") or "").strip() or None
+
+        if not self._has_dkim_signature(email, mail_detail):
+            logger.info(f"Flagged email {mailid} as spam: no DKIM-Signature header present")
+            extracted_type = "spam"
+        else:
+            ai_content = extracted_content or str(self._decode_iso2022jp(email.get("html") or mail_detail.get("html") or ""))
+            ai_result = await self.email_ai.summarize(ai_content) if ai_content.strip() else None
+            if ai_result:
+                extracted_type = str(ai_result.get("type") or "other")
+                extracted_code = str(ai_result.get("content") or "").strip() or None
 
         with self.db.transaction() as cursor:
             cursor.execute(
