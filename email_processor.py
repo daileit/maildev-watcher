@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -28,6 +28,10 @@ class EmailProcessor:
         maildev_auth_user = str(app_config.get("APP_MAILDEV_AUTH_USER") or "")
         maildev_auth_pw = str(app_config.get("APP_MAILDEV_AUTH_PW") or "")
         self.maildev_auth = (maildev_auth_user, maildev_auth_pw) if maildev_auth_user else None
+        self.maildev_api_version = str(app_config.get("APP_MAILDEV_API_VERSION") or "auto").strip().lower()
+        self._maildev_email_path: Optional[str] = (
+            "/api/email" if self.maildev_api_version == "3" else "/email" if self.maildev_api_version != "auto" else None
+        )
         self.maildev_receiver_whitelist = str(app_config.get("APP_MAILDEV_RECEIVER_WHITELIST") or "").strip().lower()
         self.maildev_receiver_whitelist = [
             item.strip().lower()
@@ -54,8 +58,30 @@ class EmailProcessor:
             value = f"http://{value}"
         return value.rstrip("/")
 
+    async def _resolve_maildev_email_path(self) -> str:
+        """Detect whether MailDev serves its email API at /email (<3.0.0) or /api/email (>=3.0.0)."""
+        if self._maildev_email_path:
+            return self._maildev_email_path
+
+        for candidate in ("/email", "/api/email"):
+            url = f"{self.maildev_endpoint}{candidate}"
+            try:
+                async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
+                    response = await client.get(url)
+                if response.status_code != 404:
+                    self._maildev_email_path = candidate
+                    logger.info(f"Detected MailDev email API path: {candidate}")
+                    return candidate
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"MailDev API version probe failed for {url}: {exc}")
+
+        # Fall back to the legacy path; downstream calls will log their own failures.
+        self._maildev_email_path = "/email"
+        return self._maildev_email_path
+
     async def fetch_maildev_email_list(self) -> List[Dict[str, Any]]:
-        url = f"{self.maildev_endpoint}/email"
+        email_path = await self._resolve_maildev_email_path()
+        url = f"{self.maildev_endpoint}{email_path}"
         try:
             async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
                 response = await client.get(url)
@@ -96,7 +122,8 @@ class EmailProcessor:
         return True
 
     async def _fetch_mail_detail(self, mailid: str) -> Dict[str, Any]:
-        url = f"{self.maildev_endpoint}/email/{mailid}"
+        email_path = await self._resolve_maildev_email_path()
+        url = f"{self.maildev_endpoint}{email_path}/{mailid}"
         try:
             async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
                 response = await client.get(url)
@@ -109,7 +136,8 @@ class EmailProcessor:
         return {}
 
     async def _delete_maildev_email(self, mailid: str) -> bool:
-        url = f"{self.maildev_endpoint}/email/{mailid}"
+        email_path = await self._resolve_maildev_email_path()
+        url = f"{self.maildev_endpoint}{email_path}/{mailid}"
         try:
             async with httpx.AsyncClient(timeout=self.maildev_timeout, auth=self.maildev_auth) as client:
                 response = await client.delete(url)
