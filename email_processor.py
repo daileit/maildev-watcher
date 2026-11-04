@@ -30,7 +30,8 @@ class EmailProcessor:
         maildev_auth_pw = str(app_config.get("APP_MAILDEV_AUTH_PW") or "")
         self.maildev_auth = (maildev_auth_user, maildev_auth_pw) if maildev_auth_user else None
         self.maildev_api_version = str(app_config.get("APP_MAILDEV_API_VERSION") or "auto").strip().lower()
-        self.maildev_dkim_filter = str(app_config.get("APP_MAILDEV_DKIM_FILTER") or "false").strip().lower() == "true"
+        self.maildev_spam_detect = str(app_config.get("APP_MAILDEV_SPAM_DETECT") or "false").strip().lower() == "true"
+        self.maildev_spam_filter = str(app_config.get("APP_MAILDEV_SPAM_FILTER") or "false").strip().lower() == "true"
         self._maildev_email_path: Optional[str] = (
             "/api/email" if self.maildev_api_version == "3" else "/email" if self.maildev_api_version != "auto" else None
         )
@@ -398,10 +399,10 @@ class EmailProcessor:
 
         mail_detail = await self._fetch_mail_detail(mailid)
         mail_detail = self._decode_iso2022jp(mail_detail)
-        has_dkim = self._has_dkim_signature(email, mail_detail)
+        has_dkim = True if not self.maildev_spam_detect else self._has_dkim_signature(email, mail_detail)
 
-        if not has_dkim and self.maildev_dkim_filter:
-            logger.info(f"Discarded email {mailid}: no DKIM-Signature header present (APP_MAILDEV_DKIM_FILTER enabled)")
+        if not has_dkim and self.maildev_spam_filter:
+            logger.info(f"Discarded email {mailid}: no DKIM-Signature header present (APP_MAILDEV_SPAM_FILTER enabled)")
             await self._delete_maildev_email(mailid)
             return
 
