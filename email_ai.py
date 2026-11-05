@@ -28,7 +28,7 @@ class EmailAI:
     _SPACE_RE = re.compile(r"[ \t]{2,}")
     _NEWLINE_RE = re.compile(r"\n{3,}")
     _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
-    _ALLOWED_TYPES = {"change_email", "win_prize", "otp_code", "other"}
+    _ALLOWED_TYPES = {"change_email","win_prize","otp_code","spam","advertisement", "other"}
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None, base_url: Optional[str] = None):
         self.api_key_config = api_key or openai_config.get("OPENAI_API_KEY", "")
@@ -214,7 +214,7 @@ class EmailAI:
                                 f"You are an {self.language} email assistant. Reply in {self.language}. "
                                 f"Classify and summarize the email into strict JSON with this exact shape: "
                                 f"{{\"type\":\"...\",\"content\":\"...\"}}. "
-                                f"Allowed type values are only: change_email, win_prize, otp_code, other. "
+                                f"Allowed type values are only: {', '.join(self._ALLOWED_TYPES)}. "
                                 f"If unsure, use type=other. Keep content as one concise short {self.language} sentence of the main point. "
                                 f"If there is an OTP/login code, include it in content wrapped in double quotes. "
                                 f"Output JSON only, no markdown, no explanation."
